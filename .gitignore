@@ -11,3 +11,6 @@ playwright-profile/
 world-core/
 browser-evidence/
 benchmarks/
+
+# 临时备份文件
+*.bak-*
