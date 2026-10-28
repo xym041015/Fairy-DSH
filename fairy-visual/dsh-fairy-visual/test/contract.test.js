@@ -83,9 +83,10 @@ test('keeps the client entrypoint and extracted managers within their module bud
 test('ships an official client module with explicit lifecycle ownership', () => {
   assert.match(clientSource, /ctx\.slots\.inject\('shell\.overlay'/);
   assert.match(clientSource, /ctx\.slots\.inject\('conversation\.session\.header\.utilities'/);
-  assert.match(clientSource, /ctx\.settingsScope\.bind\(\{ namespace: SETTINGS_NAMESPACE \}\)/);
+  assert.match(clientSource, /createLocalSettingsBridge\(\)/);
+  assert.match(clientSource, /fetch\('\/fairy-visual\/settings'/);
   assert.match(clientSource, /this\.sessions\.binding/);
-  assert.match(clientSource, /module\.exports = \{ apply, inject: \['slots', 'sessions', 'settingsScope'\]/);
+  assert.match(clientSource, /module\.exports = \{ apply, inject: \['slots', 'sessions'\]/);
   assert.doesNotMatch(source, /__dshFairyLoaded|__dshFairyState|__dshFairySessionRuntime|localStorage|sessionStorage/);
   assert.match(bundle, /window\.__ModuleLoader__\.load\(/);
   assert.match(bundle, /id: 'dsh-fairy-visual'/);
@@ -110,7 +111,7 @@ test('keeps module ownership boundaries and official slot declarations', () => {
   assert.match(clientSource, /settings\.section/);
   assert.doesNotMatch(clientSource, /sessions\.clear\(\)|workspaces\.startSession\(\)|STARTUP_RESET_ATTR/);
   assert.doesNotMatch(source, /fairy-voice|127\.0\.0\.1:9880|agent\/pre-step/);
-  assert.match(serverSource, /settingsNamespace\(settingsNamespaceName\)/);
+  assert.match(serverSource, /loadSettingsStore|writeSettingsStore/);
   assert.match(contractTypes, /interface FairyVisualSettings/);
 });
 
@@ -145,7 +146,7 @@ test('keeps merged model/reasoning controls on one explicit owner', () => {
 test('coalesces marker updates and ignores unrelated class churn', () => {
   assert.match(semanticMarkerSource, /function mutationTouchesSemanticSurface\(records, selector\)/);
   assert.match(clientSource, /if \(mutationTouchesSemanticSurface\(records, SEMANTIC_SURFACE_SELECTOR\)\) schedule\(\)/);
-  assert.match(clientSource, /attributeFilter: \['aria-expanded', 'aria-label', 'aria-selected', OFFICIAL_ATTRIBUTES\.phase, OFFICIAL_ATTRIBUTES\.slot\]/);
+  assert.match(clientSource, /attributeFilter: \['aria-expanded', 'aria-label', 'aria-selected', 'aria-modal', 'role', OFFICIAL_ATTRIBUTES\.phase, OFFICIAL_ATTRIBUTES\.slot\]/);
   assert.match(clientSource, /'data-dsh-fairy-sidebar-layer',\s*'data-dsh-fairy-history-surface'/);
   assert.doesNotMatch(clientSource, /attributeFilter: \[[^\]]*'class'/);
   assert.match(clientSource, /lifecycle\.scheduleFrame\('sidebar-board-sync', sync(?:, [^)]+)?\)/);

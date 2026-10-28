@@ -3,9 +3,10 @@ import { chmodSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-const script = new URL('../accepted-baseline.js', import.meta.url).pathname;
+const script = fileURLToPath(new URL('../accepted-baseline.js', import.meta.url));
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'dsh-accepted-baseline-test-'));

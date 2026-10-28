@@ -86,10 +86,44 @@ const PRICING_MODEL = 'deepseek-v4-flash';
 const PRICING_VERSION = 'deepseek-v4-flash-2026-08-26';
 const PRICING_VERIFIED_DATE = '2026-08-26';
 const PRICING_SOURCE_URL = 'https://api-docs.deepseek.com/quick_start/pricing/';
-const USD_TO_CNY_ESTIMATE = 7.2;
+const PRICING_OVERRIDE_FILE = join(DSH_HOME, 'balance-meter', 'pricing.json');
+
+/**
+ * Optional pricing overrides ($DSH_HOME/balance-meter/pricing.json):
+ *   { "usdToCnyEstimate": 7.3, "usdPerMillion": { "offPeak": { "cacheHit": …, "cacheMiss": …, "output": … }, "peak": { … } } }
+ * Every field is optional; invalid numbers fall back to the built-in defaults so
+ * a stale or partial override file can never zero out the cost estimate.
+ */
+export function readPricingOverride(path = PRICING_OVERRIDE_FILE) {
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return { usdToCnyEstimate: undefined, usdPerMillion: { offPeak: {}, peak: {} } };
+  }
+  const band = (name) => (raw?.usdPerMillion && typeof raw.usdPerMillion[name] === 'object' ? raw.usdPerMillion[name] : {});
+  const rate = (container, key) => {
+    const value = Number(container?.[key]);
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  };
+  const usdToCny = Number(raw?.usdToCnyEstimate);
+  return {
+    usdToCnyEstimate: Number.isFinite(usdToCny) && usdToCny > 0 ? usdToCny : undefined,
+    usdPerMillion: {
+      offPeak: { cacheHit: rate(band('offPeak'), 'cacheHit'), cacheMiss: rate(band('offPeak'), 'cacheMiss'), output: rate(band('offPeak'), 'output') },
+      peak: { cacheHit: rate(band('peak'), 'cacheHit'), cacheMiss: rate(band('peak'), 'cacheMiss'), output: rate(band('peak'), 'output') },
+    },
+  };
+}
+
+const PRICING_OVERRIDE = readPricingOverride();
+const ENV_USD_TO_CNY = Number(process.env.DSH_FAIRY_USD_CNY);
+const USD_TO_CNY_ESTIMATE = Number.isFinite(ENV_USD_TO_CNY) && ENV_USD_TO_CNY > 0
+  ? ENV_USD_TO_CNY
+  : PRICING_OVERRIDE.usdToCnyEstimate ?? 7.2;
 const USD_PER_MILLION = Object.freeze({
-  offPeak: Object.freeze({ cacheHit: 0.007, cacheMiss: 0.22, output: 0.66 }),
-  peak: Object.freeze({ cacheHit: 0.014, cacheMiss: 0.44, output: 1.32 }),
+  offPeak: Object.freeze({ cacheHit: 0.007, cacheMiss: 0.22, output: 0.66, ...PRICING_OVERRIDE.usdPerMillion.offPeak }),
+  peak: Object.freeze({ cacheHit: 0.014, cacheMiss: 0.44, output: 1.32, ...PRICING_OVERRIDE.usdPerMillion.peak }),
 });
 
 export function pricingBandForDate(date = new Date()) {

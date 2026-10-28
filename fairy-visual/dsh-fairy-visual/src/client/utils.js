@@ -20,11 +20,13 @@ export function syncDocumentMode(snapshot) {
 
   if (enabled) {
     root.setAttribute('data-dsh-fairy-visual', '');
+    root.setAttribute('data-dsh-fairy-suite', '');
     root.setAttribute(THEME_ATTR, theme);
     root.setAttribute(MODE_ATTR, 'hdd');
     root.setAttribute(POWER_MODE_ATTR, powerMode);
   } else {
     root.removeAttribute('data-dsh-fairy-visual');
+    root.removeAttribute('data-dsh-fairy-suite');
     root.removeAttribute(THEME_ATTR);
     root.removeAttribute(MODE_ATTR);
     root.removeAttribute(POWER_MODE_ATTR);

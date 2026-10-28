@@ -1,7 +1,7 @@
 const React = require('react');
 const { jsx, jsxs } = require('react/jsx-runtime');
 const { createFairyDiagnostics } = require('../../../../fairy-contracts/client-diagnostics.cjs');
-const { SETTINGS_NAMESPACE, STYLE_ID, MODE_ATTR, POWER_MODE_ATTR, THEME_ATTR, POWER_TOGGLE_WIDTH, POWER_TOGGLE_HEIGHT, DEFAULT } = require('./constants.js');
+const { SETTINGS_NAMESPACE, STYLE_ID, MODE_ATTR, POWER_MODE_ATTR, THEME_ATTR, POWER_TOGGLE_WIDTH, POWER_TOGGLE_HEIGHT, COMPOSER_DOCK_ENABLED, DEFAULT } = require('./constants.js');
 const IDENTITY_SETTINGS_NAMESPACE = 'fairy-identity';
 const { deriveSessionActivity, syncDocumentMode } = require('./utils.js');
 const { injectStyles } = require('./style.js');
@@ -131,6 +131,7 @@ const diagnostics = createFairyDiagnostics('dsh-fairy-visual');
         disposeControllerLifecycle(this.lifecycle);
         mascotRuntime?.dispose?.();
         document.documentElement.removeAttribute('data-dsh-fairy-visual');
+        document.documentElement.removeAttribute('data-dsh-fairy-suite');
         document.documentElement.removeAttribute(MODE_ATTR);
         document.documentElement.removeAttribute(POWER_MODE_ATTR);
         document.documentElement.removeAttribute(THEME_ATTR);
@@ -173,14 +174,14 @@ const diagnostics = createFairyDiagnostics('dsh-fairy-visual');
       return jsxs('div', {
         className: 'dsh-fairy-toggle-group',
         role: 'group',
-        'aria-label': 'H.D.D 视觉控制',
+        'aria-label': 'Fairy 套件总开关', title: 'Fairy 套件总开关(视觉/语音/余额卡/浏览器面板)',
         children: [
           jsxs('button', {
             type: 'button',
             className: 'dsh-fairy-toggle',
             'data-on': String(on),
             'aria-pressed': String(on),
-            'aria-label': on ? '关闭 H.D.D 视觉' : '启用 H.D.D 视觉',
+            'aria-label': on ? '关闭 Fairy 套件' : '启用 Fairy 套件',
             onClick: () => save(controller, 'enabled', !on),
             children: [jsx('span', { className: 'dsh-fairy-dot' }), 'H.D.D'],
           }),
@@ -308,7 +309,7 @@ const diagnostics = createFairyDiagnostics('dsh-fairy-visual');
       });
     }
     const CHAT_SURFACE_SELECTOR = `${OFFICIAL_SELECTORS.chatFlow}, ${OFFICIAL_SELECTORS.conversationScroll}`;
-    const STAGE_SURFACE_SELECTOR = OFFICIAL_SELECTORS.conversation;
+    const STAGE_SURFACE_SELECTOR = `${OFFICIAL_SELECTORS.conversation}, ${OFFICIAL_SELECTORS.conversationAlt}`;
     const resolveStageSurface = () => anyPhase(conversation(document));
     const hasChatSurfaceMutation = (records) => records.some((record) => (record.type === 'attributes' && record.target.matches?.(CHAT_SURFACE_SELECTOR)) || [...record.addedNodes, ...record.removedNodes].some((node) => node.nodeType === 1 && (node.matches?.(CHAT_SURFACE_SELECTOR) || node.querySelector?.(CHAT_SURFACE_SELECTOR))));
     const hasStageSurfaceMutation = (records) => records.some((record) => [...record.addedNodes, ...record.removedNodes].some((node) => node.nodeType === 1 && (node.matches?.(STAGE_SURFACE_SELECTOR) || node.querySelector?.(STAGE_SURFACE_SELECTOR))));
@@ -565,7 +566,9 @@ const diagnostics = createFairyDiagnostics('dsh-fairy-visual');
         const lifecycle = claimSingleton(document, 'stage-host', createLifecycleScope('stage-host'));
         injectStyles();
         lifecycle.add(semanticMarkersManager.install(), 'stage-host:semantic-markers');
-        lifecycle.add(mountComposerDock(controller), 'stage-host:composer-dock');
+        // The native composer surface stays in charge unless the dock contract
+        // matches this layout (see COMPOSER_DOCK_ENABLED).
+        if (COMPOSER_DOCK_ENABLED) lifecycle.add(mountComposerDock(controller), 'stage-host:composer-dock');
         return () => lifecycle.dispose();
       }, [controller]);
       return jsxs(React.Fragment, { children: [jsx(HddBackgroundFxHost, { enabled: state.settings.enabled }), jsx(SidebarBoardCutout, { enabled: state.settings.enabled }), jsx(HddOverlayScrollbars, { enabled: state.settings.enabled }), jsx(Stage, { state }), jsx(HeroHost, { controller }), jsx(ActiveComposerPlaceholder, { controller }), jsx(HeroToggleHost, { controller }), jsx(BrandHost, { controller }), jsx(PowerHost, { controller })] });
@@ -720,7 +723,7 @@ const diagnostics = createFairyDiagnostics('dsh-fairy-visual');
         syncPowerGeometry();
         if (typeof MutationObserver === 'function' && document.body) {
           structureObserver = createManagedMutationObserver((records) => {
-            if (mutationTouchesSurface(records, `${OFFICIAL_SELECTORS.sidebar}, ${OFFICIAL_SELECTORS.conversation}, ${OFFICIAL_SELECTORS.balance}`)) schedulePowerGeometry();
+            if (mutationTouchesSurface(records, `${OFFICIAL_SELECTORS.sidebar}, ${OFFICIAL_SELECTORS.conversation}, ${OFFICIAL_SELECTORS.conversationAlt}, ${OFFICIAL_SELECTORS.balance}`)) schedulePowerGeometry();
           });
           structureObserver.observe(document.body, { childList: true, subtree: true });
         }
@@ -814,25 +817,58 @@ const diagnostics = createFairyDiagnostics('dsh-fairy-visual');
       }, [identitySettings]);
       const mode = identityValue.mode || 'ling';
       return jsxs('div', {
-        style: { display: 'grid', gap: 12, padding: 16 },
+        className: 'dsh-fairy-settings',
         children: [
-          jsx('label', { children: [jsx('input', { type: 'checkbox', checked: state.settings.enabled, onChange: (event) => save(controller, 'enabled', event.target.checked) }), ' 启用 HDD 视觉'] }),
+          jsx('label', { children: [jsx('input', { type: 'checkbox', checked: state.settings.enabled, onChange: (event) => save(controller, 'enabled', event.target.checked) }), ' 启用 Fairy 套件(视觉 / 语音 / 余额卡 / 浏览器面板)'] }),
           jsx('label', { children: [jsx('input', { type: 'checkbox', checked: state.settings.theme === 'light', onChange: (event) => save(controller, 'theme', event.target.checked ? 'light' : 'dark') }), ' HDD 日间模式'] }),
           jsx('label', { children: [jsx('input', { type: 'checkbox', checked: state.settings.mascotVisible, onChange: (event) => save(controller, 'mascotVisible', event.target.checked) }), ' 显示 Fairy 主视觉'] }),
           jsx('label', { children: [jsx('input', { type: 'checkbox', checked: state.settings.powerMode === 'low-power', onChange: (event) => save(controller, 'powerMode', event.target.checked ? 'low-power' : 'normal') }), ' 低功耗模式'] }),
           jsx('hr', {}),
-          jsx('label', { children: ['Fairy 当前将我识别为：', jsx('select', { value: mode, onChange: (event) => save(identitySettings, 'mode', event.target.value), children: [jsx('option', { value: 'ling', children: '铃' }), jsx('option', { value: 'zhe', children: '哲' }), jsx('option', { value: 'custom', children: '自定义' })] })] }),
-          mode === 'custom' ? jsx('label', { children: ['自定义称呼：', jsx('input', { value: identityValue.customName || '', maxLength: 40, onChange: (event) => save(identitySettings, 'customName', event.target.value) })] }) : null,
-          mode === 'custom' ? jsx('label', { children: ['第二助手（可选）：', jsx('input', { value: identityValue.secondAssistant || '', maxLength: 40, onChange: (event) => save(identitySettings, 'secondAssistant', event.target.value) })] }) : null,
-          mode === 'custom' ? jsx('label', { children: ['家庭成员（可选，逗号分隔）：', jsx('input', { value: Array.isArray(identityValue.household) ? identityValue.household.join('、') : '', maxLength: 240, onChange: (event) => save(identitySettings, 'household', event.target.value.split(/[、,，]/).map((value) => value.trim()).filter(Boolean).slice(0, 12)) })] }) : null,
+          jsx('label', { className: 'dsh-fairy-settings-row', children: ['Fairy 当前将我识别为：', jsx('select', { value: mode, onChange: (event) => save(identitySettings, 'mode', event.target.value), children: [jsx('option', { value: 'ling', children: '铃' }), jsx('option', { value: 'zhe', children: '哲' }), jsx('option', { value: 'custom', children: '自定义' })] })] }),
+          mode === 'custom' ? jsx('label', { className: 'dsh-fairy-settings-row', children: ['自定义称呼：', jsx('input', { value: identityValue.customName || '', maxLength: 40, onChange: (event) => save(identitySettings, 'customName', event.target.value) })] }) : null,
+          mode === 'custom' ? jsx('label', { className: 'dsh-fairy-settings-row', children: ['第二助手（可选）：', jsx('input', { value: identityValue.secondAssistant || '', maxLength: 40, onChange: (event) => save(identitySettings, 'secondAssistant', event.target.value) })] }) : null,
+          mode === 'custom' ? jsx('label', { className: 'dsh-fairy-settings-row', children: ['家庭成员（可选，逗号分隔）：', jsx('input', { value: Array.isArray(identityValue.household) ? identityValue.household.join('、') : '', maxLength: 240, onChange: (event) => save(identitySettings, 'household', event.target.value.split(/[、,，]/).map((value) => value.trim()).filter(Boolean).slice(0, 12)) })] }) : null,
         ],
       });
     }
 
+    /* 0.2.0 移除了 webUiSettings/settingsScope;套件设置改经宿主自有路由读写,
+     * 这里保持与原命名空间对象相同的 getSnapshot/subscribe/set 接口。 */
+    function createLocalSettingsBridge() {
+      const namespaces = {
+        visual: { snapshot: { value: {} }, listeners: new Set() },
+        identity: { snapshot: { value: {} }, listeners: new Set() },
+      };
+      const notify = (key) => namespaces[key].listeners.forEach((listener) => listener());
+      const merge = (data) => {
+        for (const key of ['visual', 'identity']) {
+          if (data && typeof data[key] === 'object' && data[key]) {
+            namespaces[key].snapshot = { value: { ...namespaces[key].snapshot.value, ...data[key] } };
+            notify(key);
+          }
+        }
+      };
+      fetch('/fairy-visual/settings').then((response) => response.json()).then(merge).catch(() => {});
+      const makeNamespace = (key) => ({
+        getSnapshot: () => namespaces[key].snapshot,
+        subscribe: (listener) => {
+          namespaces[key].listeners.add(listener);
+          return () => namespaces[key].listeners.delete(listener);
+        },
+        set: (field, value) => fetch('/fairy-visual/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [key]: { [field]: value } }),
+        }).then((response) => response.json()).then(merge).catch(() => undefined),
+      });
+      return { visual: makeNamespace('visual'), identity: makeNamespace('identity') };
+    }
+
 function apply(ctx) {
       return diagnostics.guard('apply', () => {
-      const settings = ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE });
-      const identitySettings = ctx.settingsScope.bind({ namespace: IDENTITY_SETTINGS_NAMESPACE });
+      const bridge = createLocalSettingsBridge();
+      const settings = bridge.visual;
+      const identitySettings = bridge.identity;
       syncDocumentMode(settings.getSnapshot());
       injectStyles();
       const selectionGuard = createSelectionGuard({
@@ -857,4 +893,4 @@ function apply(ctx) {
       }, { surface: 'client' });
     }
 
-    module.exports = { apply, inject: ['slots', 'sessions', 'settingsScope'], name: 'dsh-fairy-visual' };
+    module.exports = { apply, inject: ['slots', 'sessions'], name: 'dsh-fairy-visual' };

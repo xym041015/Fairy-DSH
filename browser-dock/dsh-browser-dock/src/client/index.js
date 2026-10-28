@@ -323,12 +323,30 @@ function BrowserDock({ sessions }) {
 
 const inject = ['slots', 'sessions'];
 
+function useFairySuiteOn() {
+  const read = () => Boolean(document.documentElement?.hasAttribute('data-dsh-fairy-suite'));
+  const [on, setOn] = React.useState(read);
+  React.useEffect(() => {
+    const el = document.documentElement;
+    if (!el) return undefined;
+    const observer = new MutationObserver(() => setOn(el.hasAttribute('data-dsh-fairy-suite')));
+    observer.observe(el, { attributes: true, attributeFilter: ['data-dsh-fairy-suite'] });
+    return () => observer.disconnect();
+  }, []);
+  return on;
+}
+
+function FairyGatedDock(props) {
+  if (!useFairySuiteOn()) return null;
+  return jsx(BrowserDock, props);
+}
+
 function apply(ctx) {
   return diagnostics.guard('apply', () => {
     ctx.effect(() => injectStyle(), 'dsh-browser-dock style lifecycle');
     ctx.slots.inject('shell.overlay', () => ctx.slots.register({
       name: 'shell.overlay', id: 'dsh-browser-dock', order: 90,
-    }, () => jsx(BrowserDock, { sessions: ctx.sessions })));
+    }, () => jsx(FairyGatedDock, { sessions: ctx.sessions })));
   }, { surface: 'client' });
 }
 

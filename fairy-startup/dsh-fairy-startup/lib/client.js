@@ -113,6 +113,10 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
 
     function apply(ctx) {
       return diagnostics.guard('apply', () => {
+        if (!document.documentElement?.hasAttribute('data-dsh-fairy-suite')) {
+          diagnostics.warn('startup.gate', { code: 'suite-off' }, new Error('suite disabled; skip startup reset'));
+          return undefined;
+        }
         const disposeReset = resetStartupSelection(ctx.sessions, ctx.workspaces);
         if (disposeReset) ctx.effect(() => disposeReset, 'dsh-fairy-startup reset selection');
       }, { surface: 'client' });

@@ -413,6 +413,7 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
 .dsh-fairy-voice-auto{width:22px;height:22px;display:grid;place-items:center;flex:none;padding:0;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;transition:background .15s,color .15s}
 .dsh-fairy-voice-auto:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .dsh-fairy-voice-auto[data-on="true"]{background:color-mix(in srgb,var(--dsw-alias-label-secondary) 12%,transparent);color:var(--dsw-alias-label-secondary)}
+.dsh-fairy-voice-auto svg{display:block;width:16px;height:16px}
 .dsh-fairy-voice-auto:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dsh-fairy-voice-auto:disabled,.dsh-fairy-voice-volume:disabled{cursor:not-allowed;opacity:.42}
 .dsh-fairy-voice-volume{--dsh-fairy-volume:100%;appearance:none;-webkit-appearance:none;width:66px;height:22px;margin:0;background:transparent;cursor:pointer}
@@ -1005,8 +1006,13 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       return { state, play, playSystem, stop, primeAudio, setOutputVolume };
     }
 
-    function VoiceController({ useSession, sessionId }) {
-      const snapshot = useSession(readVoiceTimeline);
+    function VoiceController({ useSession, sessionId, useChat }) {
+      // The session snapshot no longer carries the chat projection in this DSH
+      // layout; the composer slot injects useChat for it. Merge both so the
+      // timeline selector keeps one contract across DSH generations.
+      const sessionSnapshot = useSession((state) => state);
+      const chatSnapshot = typeof useChat === 'function' ? useChat((state) => state) : null;
+      const snapshot = readVoiceTimeline({ ...sessionSnapshot, chat: chatSnapshot || undefined });
       const sessionKey = String(sessionId ?? snapshot.sessionKey ?? 'empty-chat');
       const activeSessions = activeSessionStore || emptyActiveSessionStore;
       const activeSelection = React.useSyncExternalStore(activeSessions.subscribe, activeSessions.getSnapshot, activeSessions.getSnapshot);
@@ -1420,6 +1426,21 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       });
       const autoLabel = autoRead ? '关闭自动朗读' : '开启自动朗读';
       const engineAvailable = engine === 'system' || availability.available;
+      // Manual read-now: one click unlocks the audio device inside the user
+      // gesture, guarantees an audible volume, and replays the newest settled
+      // answer instead of only arming automatic playback for later turns.
+      const readLatest = React.useCallback(() => {
+        if (!engineAvailable) return;
+        if (state.status === 'playing') { stop(); return; }
+        if (!autoRead) setAutoRead(true);
+        const audibleVolume = volume > 0.05 ? volume : 1;
+        if (audibleVolume !== volume) { setVolume(audibleVolume); setOutputVolume(audibleVolume); }
+        primeAudio(audibleVolume).catch((error) => reportAudioLifecycleFailure('prime', error));
+        const settled = snapshot.messagesById ? [...snapshot.messagesById.values()] : [];
+        const latest = settled.length ? settled[settled.length - 1] : null;
+        if (!latest || !latest.markdown) return;
+        window.dispatchEvent(new CustomEvent(EVENT_PLAY, { detail: { messageId: latest.id, markdown: latest.markdown, sessionKey } }));
+      }, [autoRead, engineAvailable, primeAudio, sessionKey, setOutputVolume, snapshot, state.status, stop, volume]);
       // Fixed irregular heights avoid a visible repeating cadence while keeping
       // React renders deterministic and free from animation jitter.
       const waveHeights = [6, 11, 8, 14, 10, 5, 13, 9, 14, 7, 12, 13, 6, 10, 14, 8, 13, 5, 11, 9, 13, 7, 10, 14, 6, 12, 8, 11, 5, 13];
@@ -1428,7 +1449,8 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
         return jsx.jsx('span', { className: 'dsh-fairy-voice-wave-bar', 'data-dsh-fairy-wave-bar': 'true', 'data-active': active ? 'true' : 'false', style: { '--dsh-fairy-wave-height': `${height}px`, '--dsh-fairy-wave-opacity': active ? '.86' : '.22' }, 'aria-hidden': 'true', key: index });
       });
       return jsx.jsxs('span', { className: 'dsh-fairy-voice-controls', role: 'group', 'aria-label': 'Fairy 朗读控制', [FAIRY_VOICE_CONTROL_ATTRIBUTE]: 'true', children: [
-        jsx.jsx(Tooltip, { label: engineAvailable ? autoLabel : availability.reason, children: jsx.jsx('button', { type: 'button', className: 'dsh-fairy-voice-auto', 'data-dsh-fairy-auto-control': 'true', 'data-on': autoRead ? 'true' : 'false', disabled: !engineAvailable, onClick: () => setAutoRead((value) => !value), 'aria-label': autoLabel, 'aria-pressed': autoRead, children: jsx.jsx('span', { className: 'dsh-fairy-voice-auto-dot', 'data-dsh-fairy-auto-dot': 'true', 'aria-hidden': 'true' }) }) }),
+        jsx.jsx(Tooltip, { label: state.status === 'playing' ? '停止朗读' : '朗读当前回答', children: jsx.jsx('button', { type: 'button', className: 'dsh-fairy-voice-auto', 'data-dsh-fairy-play-control': 'true', 'data-on': state.status === 'playing' ? 'true' : 'false', disabled: !engineAvailable, onClick: readLatest, 'aria-label': state.status === 'playing' ? '停止朗读' : '朗读当前回答', children: state.status === 'playing' ? jsx.jsx(IconStopFill16, {}) : jsx.jsx(IconPlayOutline16, {}) }) }),
+        jsx.jsx(Tooltip, { label: engineAvailable ? autoLabel : availability.reason, children: jsx.jsx('button', { type: 'button', className: 'dsh-fairy-voice-auto', 'data-dsh-fairy-auto-control': 'true', 'data-on': autoRead ? 'true' : 'false', disabled: !engineAvailable, onClick: () => setAutoRead((value) => !value), 'aria-label': autoLabel, 'aria-pressed': autoRead, children: jsx.jsx('svg', { viewBox: '0 0 16 16', width: '16', height: '16', 'aria-hidden': 'true', children: jsx.jsx('path', { d: 'M13.3 6.4A5.5 5.5 0 0 0 3.4 5.1M2.7 9.6a5.5 5.5 0 0 0 9.9 1.3M3.6 2.2v3h3M12.4 13.8v-3h-3', fill: 'none', stroke: 'currentColor', strokeWidth: '1.5', strokeLinecap: 'round', strokeLinejoin: 'round' }) }) }) }),
         jsx.jsx('span', { className: 'dsh-fairy-voice-waveform', 'data-dsh-fairy-waveform': 'true', 'aria-hidden': 'true', children: waveform }),
         jsx.jsx(Tooltip, { label: `语音音量 ${Math.round(volume * 100)}%`, children: jsx.jsx('input', { className: 'dsh-fairy-voice-volume', 'data-dsh-fairy-volume-input': 'true', disabled: !engineAvailable, min: '0', max: '1', step: '0.05', type: 'range', value: volume, onChange: (event) => setVolume(Number(event.target.value)), 'aria-label': '语音音量', style: { '--dsh-fairy-volume': `${Math.round(volume * 100)}%` } }) }),
         engine === 'fairy' && state.status === 'error' ? jsx.jsx('span', { title: state.error, style: { color: 'var(--dsw-alias-state-error-primary)', fontSize: '12px', maxWidth: '96px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, children: '朗读失败' }) : null

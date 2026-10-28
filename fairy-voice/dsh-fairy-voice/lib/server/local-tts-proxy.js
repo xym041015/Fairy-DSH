@@ -88,10 +88,11 @@ export function createLocalTtsTransport({
   const stream = (url, options, timeoutMs, signal) => fetchImpl === fetch
     ? openLocalStream(url, options, timeoutMs, signal)
     : fetchImpl(url, { ...options, signal }).then((response) => ({ response, release: null }));
+  const resolvePrompt = () => (typeof referencePrompt === 'function' ? referencePrompt() : referencePrompt);
   const localTtsRequest = (text) => ({
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, text_lang: 'zh', ref_audio_path: referenceAudioPath, prompt_text: referencePrompt, prompt_lang: 'zh', text_split_method: 'cut5', batch_size: 1, media_type: 'raw', streaming_mode: 1, fragment_interval: 0.14, parallel_infer: false }),
+    body: JSON.stringify({ text, text_lang: 'zh', ref_audio_path: referenceAudioPath, prompt_text: resolvePrompt(), prompt_lang: 'zh', text_split_method: 'cut5', batch_size: 4, media_type: 'raw', streaming_mode: 1, fragment_interval: 0.14, parallel_infer: false }),
   });
   return {
     status(signal) {

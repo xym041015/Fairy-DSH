@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { settingsNamespace } from '@deepseek-ai/dsh-settings';
 import { FAIRY_VISUAL_SETTINGS_NAMESPACE } from 'dsh-fairy-contracts';
-import { FairyVisualSettings } from '../src/index.js';
+import { FairyVisualSettings, __fairyTest } from '../src/index.js';
 
 const namespace = FAIRY_VISUAL_SETTINGS_NAMESPACE;
 
@@ -19,11 +18,43 @@ function schemaFields() {
   }));
 }
 
-test('settings package exposes the namespace factory used by the host registration', () => {
+test('settings namespaces keep the lowercase-dash contract used by the private store', () => {
   assert.equal(namespace, 'fairy-visual');
-  assert.equal(settingsNamespace(namespace), namespace);
-  assert.throws(() => settingsNamespace('FairyVisual'), /must match/);
-  assert.throws(() => settingsNamespace('fairy_visual'), /must match/);
+  assert.match(namespace, /^[a-z][a-z0-9-]*$/);
+  assert.doesNotMatch('FairyVisual', /^[a-z][a-z0-9-]*$/);
+  assert.doesNotMatch('fairy_visual', /^[a-z][a-z0-9-]*$/);
+});
+
+test('private settings store round-trips and seeds from the legacy import', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const home = mkdtempSync(join(tmpdir(), 'fairy-settings-'));
+  try {
+    writeFileSync(join(home, 'settings.yaml.imported'), [
+      'fairy-visual:',
+      '  enabled: true',
+      '  theme: light',
+      'fairy-identity:',
+      '  mode: zhe',
+      'other-key:',
+      '  enabled: false',
+    ].join('\n'), 'utf8');
+    process.env.DSH_HOME = home;
+    const store = __fairyTest.loadSettingsStore();
+    assert.equal(store.visual.enabled, true);
+    assert.equal(store.visual.theme, 'light');
+    assert.equal(store.identity.mode, 'zhe');
+    assert.ok(existsSync(join(home, 'fairy-visual', 'settings.json')));
+    __fairyTest.writeSettingsStore({ visual: { ...store.visual, enabled: false }, identity: store.identity });
+    const reloaded = __fairyTest.loadSettingsStore();
+    assert.equal(reloaded.visual.enabled, false);
+    assert.equal(reloaded.visual.theme, 'light');
+    assert.equal(reloaded.identity.mode, 'zhe');
+  } finally {
+    delete process.env.DSH_HOME;
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test('Visual settings schema keeps the registered fields, defaults, and bounds', () => {

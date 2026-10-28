@@ -88,7 +88,6 @@ export function apply(ctx) {
   let stateWatcher = null;
   let watcherAvailable = false;
   let watcherErrorReported = false;
-  let stateNotifyScheduled = false;
   const closeStateClients = () => {
     stateClients.forEach((res) => {
       if (!res.writableEnded && !res.destroyed) res.end();
@@ -106,15 +105,9 @@ export function apply(ctx) {
     }
   };
   const notifyClients = () => {
-    if (stateNotifyScheduled) return;
-    stateNotifyScheduled = true;
-    queueMicrotask(() => {
-      stateNotifyScheduled = false;
-      if (stateClients.size === 0) return;
     stateClients.forEach((res) => {
       if (res.writableEnded || res.destroyed) stateClients.delete(res);
       else res.write('event: state\ndata: changed\n\n');
-    });
     });
   };
 

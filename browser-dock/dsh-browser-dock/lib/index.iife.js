@@ -510,6 +510,25 @@ window.__ModuleLoader__.load({
 			});
 		}
 		const inject = ["slots", "sessions"];
+		function useFairySuiteOn() {
+			const read = () => Boolean(document.documentElement?.hasAttribute("data-dsh-fairy-suite"));
+			const [on, setOn] = React.useState(read);
+			React.useEffect(() => {
+				const el = document.documentElement;
+				if (!el) return void 0;
+				const observer = new MutationObserver(() => setOn(el.hasAttribute("data-dsh-fairy-suite")));
+				observer.observe(el, {
+					attributes: true,
+					attributeFilter: ["data-dsh-fairy-suite"]
+				});
+				return () => observer.disconnect();
+			}, []);
+			return on;
+		}
+		function FairyGatedDock(props) {
+			if (!useFairySuiteOn()) return null;
+			return jsx(BrowserDock, props);
+		}
 		function apply(ctx) {
 			return diagnostics.guard("apply", () => {
 				ctx.effect(() => injectStyle(), "dsh-browser-dock style lifecycle");
@@ -517,7 +536,7 @@ window.__ModuleLoader__.load({
 					name: "shell.overlay",
 					id: "dsh-browser-dock",
 					order: 90
-				}, () => jsx(BrowserDock, { sessions: ctx.sessions })));
+				}, () => jsx(FairyGatedDock, { sessions: ctx.sessions })));
 			}, { surface: "client" });
 		}
 		exports.apply = apply;

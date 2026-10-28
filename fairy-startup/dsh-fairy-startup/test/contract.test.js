@@ -45,7 +45,7 @@ test('owns only the official fresh-session startup flow', () => {
 
 test('duplicate startup module application keeps one reset and one baseline subscription', () => {
   let definition;
-  const attributes = new Set();
+  const attributes = new Set(['data-dsh-fairy-suite']);
   const document = { documentElement: {
     hasAttribute: (name) => attributes.has(name),
     setAttribute: (name) => attributes.add(name),

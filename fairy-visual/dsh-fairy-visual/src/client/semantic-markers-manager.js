@@ -1,6 +1,6 @@
 const { getDomObserverManager, createManagedMutationObserver } = require('./dom-observer-manager.js');
 const { createSemanticMarkerMap, markSemanticNode, mutationTouchesSemanticSurface, claimSemanticMarkers } = require('./semantic-markers.js');
-const { OFFICIAL_SELECTORS, OFFICIAL_ATTRIBUTES, SEMANTIC_SURFACE_SELECTOR, rootSlot, sidebar, shellOverlay, settingsDialog, sidebarOpenControl, sidebarCollapseControl, sessionTree, expandedSessionItems, selectedSessionItems, newSessionButtons, sidebarBrandButton, conversation, phase, sessionHeader, sessionHeaderActions, sessionHeaderUtilities, sessionAgentPresetLabel, headerElement, composerSeat, composerCard, sendOnlyButton, undoControl, redoControl, reportMissingCapabilities } = require('./dom-adapter.js');
+const { OFFICIAL_SELECTORS, OFFICIAL_ATTRIBUTES, SEMANTIC_SURFACE_SELECTOR, rootSlot, sidebar, shellOverlay, settingsDialog, modalDialog, sidebarOpenControl, sidebarCollapseControl, sessionTree, expandedSessionItems, selectedSessionItems, newSessionButtons, sidebarBrandButton, conversation, phase, sessionHeader, sessionHeaderActions, sessionHeaderUtilities, sessionAgentPresetLabel, headerElement, composerSeat, composerCard, sendOnlyButton, undoControl, redoControl, reportMissingCapabilities } = require('./dom-adapter.js');
 
 const domObserverManager = getDomObserverManager(document);
 
@@ -29,7 +29,7 @@ function install(lifecycle = claimSemanticMarkers(document)) {
 
     const shellOverlaySlot = shellOverlay(document);
     mark(shellOverlaySlot?.parentElement, 'data-dsh-fairy-overlay-layer');
-    const nextModalOpen = Boolean(settingsDialog(document));
+    const nextModalOpen = Boolean(settingsDialog(document) || modalDialog(document));
     if (nextModalOpen !== modalOpen) {
       modalOpen = nextModalOpen;
       document.documentElement.toggleAttribute('data-dsh-fairy-modal-open', modalOpen);
@@ -121,7 +121,7 @@ function install(lifecycle = claimSemanticMarkers(document)) {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['aria-expanded', 'aria-label', 'aria-selected', OFFICIAL_ATTRIBUTES.phase, OFFICIAL_ATTRIBUTES.slot],
+      attributeFilter: ['aria-expanded', 'aria-label', 'aria-selected', 'aria-modal', 'role', OFFICIAL_ATTRIBUTES.phase, OFFICIAL_ATTRIBUTES.slot],
     });
   }
   const cleanup = () => {

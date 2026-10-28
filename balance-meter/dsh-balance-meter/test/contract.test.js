@@ -109,6 +109,30 @@ test('uses the official V4 Flash UTC peak/off-peak schedule and rates', async ()
   assert.equal(runtime.estimateUsageUsd(usage, new Date('2026-08-26T05:00:00Z')), 0.007 + 0.22 + 0.66);
 });
 
+test('pricing overrides stay optional, per-field, and fail safe to defaults', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const runtime = await import(new URL(`../lib/index.js?pricing-override-test=${Date.now()}`, import.meta.url));
+  const home = mkdtempSync(join(tmpdir(), 'balance-pricing-'));
+  try {
+    const overrideFile = join(home, 'balance-meter', 'pricing.json');
+    mkdirSync(join(home, 'balance-meter'), { recursive: true });
+    assert.deepEqual(runtime.readPricingOverride(overrideFile), { usdToCnyEstimate: undefined, usdPerMillion: { offPeak: {}, peak: {} } });
+    writeFileSync(overrideFile, JSON.stringify({ usdToCnyEstimate: 7.5, usdPerMillion: { peak: { cacheMiss: 0.5 }, unknown: true } }));
+    const override = runtime.readPricingOverride(overrideFile);
+    assert.equal(override.usdToCnyEstimate, 7.5);
+    assert.equal(override.usdPerMillion.peak.cacheMiss, 0.5);
+    assert.equal(override.usdPerMillion.offPeak.cacheHit, undefined);
+    writeFileSync(overrideFile, JSON.stringify({ usdToCnyEstimate: -3, usdPerMillion: { offPeak: { cacheHit: 'x' } }, junk: [1] }));
+    const invalid = runtime.readPricingOverride(overrideFile);
+    assert.equal(invalid.usdToCnyEstimate, undefined);
+    assert.equal(invalid.usdPerMillion.offPeak.cacheHit, undefined);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('suspends and resumes one visible-page balance request without retaining listeners', () => {
   const match = client.match(/function createBalancePoller\(setData, sessions\) \{[\s\S]*?\n    \}\n\n    function BalanceMeter/);
   assert.ok(match, 'balance poller source is available');

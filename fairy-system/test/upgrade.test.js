@@ -15,7 +15,7 @@ const expectedHash = '13a5fe0ee8cddda2306d302eb0dbfdd601e96d14baeb512867b4b6d1d7
 const expectedVersion = '0.1.1-rc.2';
 
 function run(args, env = {}) {
-  return spawnSync(process.execPath, [script.pathname, ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
+  return spawnSync(process.execPath, [fileURLToPath(script), ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
 }
 
 function createIsolatedFixture() {

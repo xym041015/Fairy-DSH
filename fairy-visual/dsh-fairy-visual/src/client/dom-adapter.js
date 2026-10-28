@@ -102,8 +102,10 @@ const OFFICIAL_SELECTORS = Object.freeze({
   sidebar: '[data-slot="sidebar"]',
   sidebarResizeHandle: '[data-side="sidebar"]',
   conversation: '[data-slot="conversation"]',
+  conversationAlt: '[data-slot="main.conversation"]',
   shellOverlay: '[data-slot="shell.overlay"]',
   settingsDialog: '[data-slot="sidebar.settings"] [role="dialog"]',
+  modalDialog: '[role="dialog"][aria-modal="true"]',
   phaseHero: '[data-phase="hero"]',
   phaseActive: '[data-phase="active"]',
   phaseAny: '[data-phase]',
@@ -156,6 +158,7 @@ const SEMANTIC_SURFACE_SELECTOR = [
   OFFICIAL_SELECTORS.rootSurface,
   OFFICIAL_SELECTORS.sidebar,
   OFFICIAL_SELECTORS.conversation,
+  OFFICIAL_SELECTORS.conversationAlt,
   OFFICIAL_SELECTORS.shellOverlay,
   '[data-slot="sidebar.settings"]',
   '[data-phase]',
@@ -181,10 +184,15 @@ const OFFICIAL_NODE_CONTRACTS = Object.freeze(Object.fromEntries(
   Object.entries(OFFICIAL_SELECTORS).map(([name, selector]) => [name, Object.freeze({ selector })]),
 ));
 
+const conversationDescendant = (descendant) => [
+  `${OFFICIAL_SELECTORS.conversation} ${descendant}`,
+  `${OFFICIAL_SELECTORS.conversationAlt} ${descendant}`,
+].join(',');
+
 const HDD_SCROLL_TARGETS = Object.freeze([
   { key: 'history', selector: `${OFFICIAL_SELECTORS.sidebar} ${OFFICIAL_SELECTORS.sessionTree}` },
-  { key: 'conversation', selector: `${OFFICIAL_SELECTORS.conversation} ${OFFICIAL_SELECTORS.conversationScroll}` },
-  { key: 'input', selector: `${OFFICIAL_SELECTORS.conversation} ${OFFICIAL_SELECTORS.inputScroll}` },
+  { key: 'conversation', selector: conversationDescendant(OFFICIAL_SELECTORS.conversationScroll) },
+  { key: 'input', selector: conversationDescendant(OFFICIAL_SELECTORS.inputScroll) },
 ]);
 const HDD_SCROLL_TARGET_SELECTOR = HDD_SCROLL_TARGETS.map(({ selector }) => selector).join(',');
 
@@ -280,9 +288,14 @@ function officialNodes(name, scope = document) {
 
 function rootSlot(doc = document) { return officialNode('rootSlot', doc); }
 function sidebar(doc = document) { return officialNode('sidebar', doc); }
-function conversation(doc = document) { return officialNode('conversation', doc); }
+function conversation(doc = document) {
+  // DSH renamed the conversation surface slot; accept both names so the
+  // persistent HDD composition keeps binding on either layout.
+  return officialNode('conversation', doc) || officialNode('conversationAlt', doc);
+}
 function shellOverlay(doc = document) { return officialNode('shellOverlay', doc); }
 function settingsDialog(doc = document) { return officialNode('settingsDialog', doc); }
+function modalDialog(doc = document) { return officialNode('modalDialog', doc); }
 function sidebarResizeHandle(scope = document) { return officialNode('sidebarResizeHandle', scope); }
 function sidebarOpenControl(doc = document) { return officialNode('openSidebar', doc); }
 function sidebarCollapseControl(doc = document) { return officialNode('collapseSidebar', doc); }
@@ -512,6 +525,7 @@ module.exports = {
   conversation,
   shellOverlay,
   settingsDialog,
+  modalDialog,
   sidebarResizeHandle,
   sidebarOpenControl,
   sidebarCollapseControl,

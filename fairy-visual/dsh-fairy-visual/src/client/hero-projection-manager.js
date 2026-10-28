@@ -275,7 +275,7 @@ function install(_lifecycle = null, { Toggle, useController }) {
 
         if (typeof MutationObserver === 'function' && document.body) {
           structureObserver = createManagedMutationObserver((records) => {
-            if (mutationTouchesSurface(records, `${OFFICIAL_SELECTORS.conversation}, ${OFFICIAL_SELECTORS.phaseHero}, ${OFFICIAL_SELECTORS.composerSeat}`, [OFFICIAL_ATTRIBUTES.phase, 'placeholder'])) scheduleHeroSync();
+            if (mutationTouchesSurface(records, `${OFFICIAL_SELECTORS.conversation}, ${OFFICIAL_SELECTORS.conversationAlt}, ${OFFICIAL_SELECTORS.phaseHero}, ${OFFICIAL_SELECTORS.composerSeat}`, [OFFICIAL_ATTRIBUTES.phase, 'placeholder'])) scheduleHeroSync();
           });
           structureObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: [OFFICIAL_ATTRIBUTES.phase, 'placeholder'] });
           modeObserver = createManagedMutationObserver(scheduleHeroSync);
@@ -387,7 +387,7 @@ function install(_lifecycle = null, { Toggle, useController }) {
 
         if (typeof MutationObserver === 'function' && document.body) {
           structureObserver = createManagedMutationObserver((records) => {
-            if (mutationTouchesSurface(records, `${OFFICIAL_SELECTORS.conversation}, ${OFFICIAL_SELECTORS.phaseActive}, ${OFFICIAL_SELECTORS.composerSeat}`, [OFFICIAL_ATTRIBUTES.phase, OFFICIAL_ATTRIBUTES.composerSeat, 'placeholder'])) schedulePlaceholderSync();
+            if (mutationTouchesSurface(records, `${OFFICIAL_SELECTORS.conversation}, ${OFFICIAL_SELECTORS.conversationAlt}, ${OFFICIAL_SELECTORS.phaseActive}, ${OFFICIAL_SELECTORS.composerSeat}`, [OFFICIAL_ATTRIBUTES.phase, OFFICIAL_ATTRIBUTES.composerSeat, 'placeholder'])) schedulePlaceholderSync();
           });
           structureObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: [OFFICIAL_ATTRIBUTES.phase, OFFICIAL_ATTRIBUTES.composerSeat, 'placeholder'] });
           modeObserver = createManagedMutationObserver(schedulePlaceholderSync);

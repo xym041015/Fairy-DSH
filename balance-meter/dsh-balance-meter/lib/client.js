@@ -264,11 +264,28 @@ module.exports = { FAIRY_LOG_PREFIX, createFairyDiagnostics };
       });
     }
 
+    function useFairySuiteOn() {
+      const read = () => Boolean(document.documentElement?.hasAttribute('data-dsh-fairy-suite'));
+      const [on, setOn] = React.useState(read);
+      React.useEffect(() => {
+        const el = document.documentElement;
+        if (!el) return undefined;
+        const observer = new MutationObserver(() => setOn(el.hasAttribute('data-dsh-fairy-suite')));
+        observer.observe(el, { attributes: true, attributeFilter: ['data-dsh-fairy-suite'] });
+        return () => observer.disconnect();
+      }, []);
+      return on;
+    }
+    function FairyGatedMeter(props) {
+      if (!useFairySuiteOn()) return null;
+      return jsxRuntime.jsx(BalanceMeter, props);
+    }
+
     function apply(ctx) {
       return diagnostics.guard('apply', () => {
         ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
           name: 'sidebar.footer.action', id: 'balance-meter', order: 0,
-        }, () => jsxRuntime.jsx(BalanceMeter, { sessions: ctx.sessions })));
+        }, () => jsxRuntime.jsx(FairyGatedMeter, { sessions: ctx.sessions })));
       }, { surface: 'client' });
     }
 

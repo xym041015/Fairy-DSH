@@ -3,6 +3,13 @@ export const STYLE_ID = 'dsh-fairy-visual-style';
 export const MODE_ATTR = 'data-dsh-fairy-mode';
 export const POWER_MODE_ATTR = 'data-dsh-fairy-power-mode';
 export const THEME_ATTR = 'data-dsh-fairy-theme';
+// The HDD composer dock projection owns a fixed-height, grid-placeable input
+// surface. This DSH layout keeps the workspace control inside the composer's
+// accessory row and renders the official dock slot hidden, so the projection
+// deforms the official input area. Keep the native composer surface enabled
+// and leave the dock code in place for layouts that match its contract.
+export const COMPOSER_DOCK_ENABLED = false;
+
 export const POWER_TOGGLE_WIDTH = 82;
 export const POWER_TOGGLE_HEIGHT = 22;
 

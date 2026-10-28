@@ -37,8 +37,14 @@ node --check "$DSH_ROOT/fairy-startup/dsh-fairy-startup/lib/index.js"
 node --check "$DSH_ROOT/fairy-startup/dsh-fairy-startup/lib/client.js"
 node --check "$DSH_ROOT/fairy-voice/dsh-fairy-voice/lib/index.js"
 node --check "$DSH_ROOT/fairy-voice/dsh-fairy-voice/lib/client.js"
-node --check "$DSH_ROOT/.agent-presets/fairy/runtime/index.js"
-node --check "$DSH_ROOT/.agent-presets/fairy/runtime/compiler.js"
+# .agent-presets/fairy is private and does not ship with the public repository;
+# its gates only apply when the owner supplies the assets locally (see A10).
+if [[ -f "$DSH_ROOT/.agent-presets/fairy/runtime/index.js" ]]; then
+  node --check "$DSH_ROOT/.agent-presets/fairy/runtime/index.js"
+  node --check "$DSH_ROOT/.agent-presets/fairy/runtime/compiler.js"
+else
+  echo "-- .agent-presets/fairy 不存在（私有资产未提供），跳过其语法/测试门"
+fi
 node --check "$ROOT/preflight-build.js"
 node --check "$ROOT/upgrade-preflight.js"
 node --check "$ROOT/accepted-baseline.js"
@@ -67,8 +73,10 @@ fi
 # verify.js owns cross-module/static/live contracts only. Package tests run once
 # below so the complete check has one deterministic owner for every test suite.
 node "$ROOT/verify.js" --live
-python3 "$DSH_ROOT/.agent-presets/fairy/runtime/test_fairy_core.py"
-node --test "$DSH_ROOT/.agent-presets/fairy/runtime"/test_*.mjs
+if [[ -f "$DSH_ROOT/.agent-presets/fairy/runtime/index.js" ]]; then
+  python3 "$DSH_ROOT/.agent-presets/fairy/runtime/test_fairy_core.py"
+  node --test "$DSH_ROOT/.agent-presets/fairy/runtime"/test_*.mjs
+fi
 node --test "$DSH_ROOT/balance-meter/dsh-balance-meter/test"/*.test.js
 node --test "$DSH_ROOT/browser-dock/dsh-browser-dock/test"/*.test.js
 node --test "$DSH_ROOT/fairy-visual/dsh-fairy-visual/test"/*.test.js

@@ -3,25 +3,34 @@ import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { gfm } from 'micromark-extension-gfm';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { stat as statFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { chmod, mkdir, open, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { createLocalTtsTransport, createPcmStreamHandler } from './server/local-tts-proxy.js';
 import { createVoiceBriefFallback, createVoiceBrainServerBoundary } from './server/voice-brief-fallback.js';
+import { createSystemTtsTransport } from './server/system-tts.js';
 import { createFairyDiagnostics } from 'dsh-fairy-contracts/diagnostics';
 
 const LOCAL_TTS_URL = 'http://127.0.0.1:9880/tts';
 const LOCAL_DOCS_URL = 'http://127.0.0.1:9880/docs';
-const REFERENCE_AUDIO_PATH = join(homedir(), '.dsh', 'fairy-voice', 'runtime', 'reference', 'fairy_ref.wav');
-const REFERENCE_PROMPT_PATH = join(homedir(), '.dsh', 'fairy-voice', 'runtime', 'reference', 'fairy_ref.txt');
+const FAIRY_HOME = process.env.DSH_HOME || join(homedir(), '.dsh');
+const REFERENCE_DIR = process.env.DSH_FAIRY_REFERENCE_DIR || join(FAIRY_HOME, 'fairy-voice', 'runtime', 'reference');
+const REFERENCE_AUDIO_PATH = join(REFERENCE_DIR, 'fairy_ref.wav');
+const REFERENCE_PROMPT_PATH = join(REFERENCE_DIR, 'fairy_ref.txt');
 const REFERENCE_PROMPT_FALLBACK = '根据用户协议，我无权回复该问题。主人将在合适的时间与合适的场合获知答案。';
 const diagnostics = createFairyDiagnostics('dsh-fairy-voice');
 
+/* Read lazily: the reference pair can be installed while the host is running.
+ * The first miss is reported once; later misses stay silent. */
 function readReferencePrompt() {
   try {
-    return readFileSync(REFERENCE_PROMPT_PATH, 'utf8').trim();
+    return readFileSync(REFERENCE_PROMPT_PATH, 'utf8').trim() || REFERENCE_PROMPT_FALLBACK;
   } catch (error) {
-    diagnostics.warn('reference.prompt.load', { file: 'fairy_ref.txt', fallback: true }, error);
+    if (!readReferencePrompt.warned) {
+      readReferencePrompt.warned = true;
+      diagnostics.warn('reference.prompt.load', { file: 'fairy_ref.txt', fallback: true }, error);
+    }
     return REFERENCE_PROMPT_FALLBACK;
   }
 }
@@ -36,7 +45,8 @@ const MAX_VOICE_BRIEF_INPUT_LENGTH = 32_000;
 const MAX_VOICE_BRIEF_OUTPUT_LENGTH = 260;
 const DEEPSEEK_V4_FLASH_MODEL = 'deepseek-v4-flash';
 const DEEPSEEK_CHAT_COMPLETIONS_URL = 'https://api.deepseek.com/chat/completions';
-const VOICE_BRAIN_CONFIG_PATH = join(homedir(), '.dsh', 'fairy-voice', 'voice-brain.json');
+const VOICE_BRAIN_CONFIG_PATH = join(FAIRY_HOME, 'fairy-voice', 'voice-brain.json');
+const SYSTEM_TTS_FALLBACK_CODES = new Set(['local-service-unavailable', 'local-service-failed', 'timeout']);
 function safeText(value) {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
@@ -457,6 +467,27 @@ const createVoiceBrief = createVoiceBriefFallback({
   endpoint: DEEPSEEK_CHAT_COMPLETIONS_URL,
 });
 
+/* Preserve a probed first chunk: the failure mode we guard against (a 200 with an
+ * empty body) must be distinguishable without losing the buffered audio. */
+async function readFirstChunk(response) {
+  const body = response?.body;
+  if (!body) return { ok: false, upstream: { response, release: null } };
+  const iterator = body[Symbol.asyncIterator]();
+  const first = await iterator.next();
+  if (first.done || !first.value || !first.value.length) {
+    return { ok: false, upstream: { response, release: null } };
+  }
+  const replay = (async function* replayBody() {
+    yield first.value;
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) return;
+      yield next.value;
+    }
+  })();
+  return { ok: true, upstream: { response: { ok: response.ok, status: response.status, headers: response.headers, body: replay }, release: response.release ?? null } };
+}
+
 export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readVoiceBrainConfig, writeConfig = writeVoiceBrainConfig, clearConfig = clearVoiceBrainConfig } = {}) {
   const sentencePreparation = createSentencePreparation();
   const pcmStreamHandler = createPcmStreamHandler();
@@ -465,10 +496,11 @@ export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readV
     ttsUrl: LOCAL_TTS_URL,
     docsUrl: LOCAL_DOCS_URL,
     referenceAudioPath: REFERENCE_AUDIO_PATH,
-    referencePrompt: REFERENCE_PROMPT,
+    referencePrompt: () => readReferencePrompt(),
     ttsTimeoutMs: TTS_TIMEOUT_MS,
     statusTimeoutMs: STATUS_TIMEOUT_MS,
   });
+  const systemTtsTransport = createSystemTtsTransport();
   const voiceBrainBoundary = createVoiceBrainServerBoundary({
     createBrief: createVoiceBrief,
     fetchImpl,
@@ -492,7 +524,21 @@ export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readV
     status: async (_req, res) => {
       const startedAt = diagnostics.start();
       try {
-        sendJson(res, 200, await localTtsTransport.status());
+        try {
+          const voiceStatus = await localTtsTransport.status();
+          const reference = await statFile(REFERENCE_AUDIO_PATH).catch(() => null);
+          sendJson(res, 200, {
+            ...voiceStatus,
+            backend: 'gpt-sovits',
+            voice: 'Fairy',
+            referenceInstalled: Boolean(reference),
+            reason: reference ? null : '需要 3-10 秒的 Fairy 参考音频（见 /fairy-voice/reference）。',
+          });
+        } catch (localError) {
+          // Without the local GPT-SoVITS service the host system voice keeps
+          // the voice surface usable instead of reporting a dead service.
+          sendJson(res, 200, await systemTtsTransport.status());
+        }
       } catch (error) {
         diagnostics.warn('status.request', {}, error);
         sendJson(res, 200, { available: false, reason: '本地 Fairy 服务未启动。' });
@@ -526,6 +572,34 @@ export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readV
         sendJson(res, 200, await voiceBrainBoundary.configure(body));
       } catch (error) {
         const code = error?.code || (error?.message === 'invalid-json' ? 'invalid-json' : 'voice-brief-config-invalid');
+        sendJson(res, statusFor(code), { error: publicError(code) });
+      }
+    },
+    reference: async (req, res) => {
+      try {
+        if (req.method === 'GET') {
+          const stat = await statFile(REFERENCE_AUDIO_PATH);
+          const text = readReferencePrompt();
+          sendJson(res, 200, {
+            installed: Boolean(stat),
+            audioBytes: stat ? stat.size : 0,
+            text: text === REFERENCE_PROMPT_FALLBACK ? '' : text,
+            directory: REFERENCE_DIR,
+          });
+          return;
+        }
+        const body = await readJson(req, 40_000_000);
+        const audio = typeof body?.audioBase64 === 'string' ? Buffer.from(body.audioBase64, 'base64') : null;
+        if (!audio || !audio.length) throw Object.assign(new Error('missing audio'), { code: 'invalid-json' });
+        await mkdir(dirname(REFERENCE_AUDIO_PATH), { recursive: true });
+        await writeFile(REFERENCE_AUDIO_PATH, audio, { mode: 0o600 });
+        const text = typeof body?.text === 'string' ? body.text.trim() : '';
+        await writeFile(REFERENCE_PROMPT_PATH, text || REFERENCE_PROMPT_FALLBACK, { mode: 0o600 });
+        diagnostics.metric('reference.install', Date.now(), { audio_bytes: audio.length, text_chars: text.length });
+        sendJson(res, 200, { installed: true, audioBytes: audio.length, text });
+      } catch (error) {
+        const code = error?.code === 'invalid-json' ? 'invalid-json' : 'reference-install-failed';
+        diagnostics.warn('reference.install', { code }, error);
         sendJson(res, statusFor(code), { error: publicError(code) });
       }
     },
@@ -573,12 +647,42 @@ export function createFairyVoiceHandlers({ fetchImpl = fetch, readConfig = readV
         if (Array.from(text).length > MAX_TTS_TEXT_LENGTH) throw Object.assign(new Error('large'), { code: 'text-too-large' });
         activeTtsController?.abort('superseded');
         activeTtsController = controller;
-        const upstream = await localTtsTransport.stream(text, controller.signal);
+        let upstream = null;
+        let usedSystemVoice = false;
+        const localAttempt = async () => {
+          const attempt = await localTtsTransport.stream(text, controller.signal);
+          // A 200 response can still yield no audio (device/library failures far
+          // inside the local engine). Probe the first chunk so the request can
+          // still be served audibly by the host system voice instead of silence.
+          const probe = await readFirstChunk(attempt.response || attempt);
+          if (!probe.ok) throw Object.assign(new Error('local synthesis produced no audio'), { code: 'local-service-failed' });
+          return probe.upstream;
+        };
+        try {
+          try {
+            upstream = await localAttempt();
+          } catch (firstError) {
+            // One bounded retry rides out transient engine hiccups (a slow
+            // inference pass that produced zero bytes) before the audible
+            // system-voice fallback engages. Abort/supersede never retries.
+            if (controller.signal.aborted || firstError?.code !== 'local-service-failed') throw firstError;
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            if (controller.signal.aborted) throw firstError;
+            diagnostics.warn('tts.stream.retry', { code: 'local-service-failed' });
+            upstream = await localAttempt();
+          }
+        } catch (localError) {
+          if (!SYSTEM_TTS_FALLBACK_CODES.has(localError?.code)) throw localError;
+          diagnostics.metric('tts.stream.fallback', startedAt, { code: localError.code });
+          upstream = await systemTtsTransport.stream(text, controller.signal);
+          usedSystemVoice = true;
+        }
         const response = upstream.response || upstream;
         releaseUpstream = upstream.release || null;
         if (!response.ok) throw Object.assign(new Error('local synthesis failed'), { code: 'local-service-failed' });
         res.statusCode = 200;
         res.setHeader('Content-Type', response.headers.get('content-type') || 'audio/raw');
+        res.setHeader('X-Fairy-Voice', usedSystemVoice ? 'system' : 'fairy');
         res.setHeader('Cache-Control', 'no-store');
         await pcmStreamHandler.pipe(response, res, controller.signal);
         if (!res.destroyed && !res.writableEnded) res.end();
@@ -616,6 +720,7 @@ export function apply(ctx) {
     const unregisterBrainStatus = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/brain/status', handler: handlers.voiceBrainStatus });
     const unregisterBrainConfig = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/brain/config', handler: handlers.voiceBrainConfig });
     const unregisterBrainBrief = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/brain/brief', handler: handlers.voiceBrief });
+    const unregisterReference = ws.webServer.register({ kind: 'exact', path: '/fairy-voice/reference', handler: handlers.reference });
     return () => {
       handlers.dispose();
       unregisterStatus?.();
@@ -624,6 +729,7 @@ export function apply(ctx) {
       unregisterBrainStatus?.();
       unregisterBrainConfig?.();
       unregisterBrainBrief?.();
+      unregisterReference?.();
     };
   }));
   }, { surface: 'host' });

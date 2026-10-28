@@ -13,9 +13,15 @@ const path = require('node:path');
 const DEFAULT_OFFICIAL_DSH_PACKAGE = path.join(os.homedir(), '.local/lib/node_modules/@deepseek-ai/dsh/package.json');
 const DEFAULT_OFFICIAL_RUNTIME = path.join(os.homedir(), '.local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-runtime/lib/client.js');
 
+// The approved pin describes the maintainer release machine. A different local
+// DSH install can be accepted explicitly, without editing this file, through
+// DSH_APPROVED_DSH_VERSION + DSH_APPROVED_RUNTIME_SHA256 (both must be set
+// together — accepting a version without its runtime hash fails closed).
+const ENV_APPROVED_DSH_VERSION = process.env.DSH_APPROVED_DSH_VERSION || '';
+const ENV_APPROVED_RUNTIME_SHA256 = process.env.DSH_APPROVED_RUNTIME_SHA256 || '';
 const APPROVED = Object.freeze({
-  dshVersion: '0.1.1-rc.2',
-  runtimeSha256: '13a5fe0ee8cddda2306d302eb0dbfdd601e96d14baeb512867b4b6d1d72f6679',
+  dshVersion: ENV_APPROVED_DSH_VERSION && ENV_APPROVED_RUNTIME_SHA256 ? ENV_APPROVED_DSH_VERSION : '0.1.1-rc.2',
+  runtimeSha256: ENV_APPROVED_DSH_VERSION && ENV_APPROVED_RUNTIME_SHA256 ? ENV_APPROVED_RUNTIME_SHA256 : '13a5fe0ee8cddda2306d302eb0dbfdd601e96d14baeb512867b4b6d1d72f6679',
   locks: Object.freeze({
     'dsh-message-edit': Object.freeze({
       version: '0.2.3',
